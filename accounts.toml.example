@@ -1,0 +1,7 @@
+# Accounts to collect balances for, named by identification_hash, which is
+# stable across sessions. Pull the hashes out of a session response.
+# Copy to accounts.toml, which is gitignored.
+
+[[account]]
+hash = "PASTE_THE_identification_hash_FROM_THE_SESSION_RESPONSE"
+label = "Privatkonto 1234"

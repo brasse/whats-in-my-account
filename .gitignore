@@ -1,0 +1,14 @@
+# Identifies real bank accounts
+accounts.toml
+
+# Session dumps: effectively keys to the account
+.explore-session*.json
+
+# The Enable Banking private key, wherever it lands
+*.pem
+
+# Collected data
+balances.db*
+
+.venv/
+__pycache__/

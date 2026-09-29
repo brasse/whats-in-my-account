@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What's in my account</title>
+<!-- Vendored rather than loaded from a CDN: this runs on a LAN and should not
+     depend on the internet, on a CDN path staying valid, or on an ad blocker
+     being in a good mood. -->
+<script src="/static/chart.umd.min.js"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --surface-0: #f4f3f0;
+    --surface-1: #fcfcfb;
+    --border: #e1e0da;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #86857f;
+    --grid: #ebeae5;
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
+    --warn-bg: #fdf3e3;
+    --warn-border: #eda100;
+    --warn-text: #6b4a00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --surface-0: #111110;
+      --surface-1: #1a1a19;
+      --border: #333330;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted: #8b8a82;
+      --grid: #2a2a27;
+      --series-1: #3987e5;
+      --series-2: #d95926;
+      --warn-bg: #2e2510;
+      --warn-border: #c98500;
+      --warn-text: #f0d69a;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-0: #111110;
+    --surface-1: #1a1a19;
+    --border: #333330;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #8b8a82;
+    --grid: #2a2a27;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --warn-bg: #2e2510;
+    --warn-border: #c98500;
+    --warn-text: #f0d69a;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--surface-0);
+    color: var(--text-primary);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 1000px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 20px; letter-spacing: -0.01em; }
+
+  .banner {
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-border);
+    color: var(--warn-text);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 20px;
+    font-size: 13px;
+  }
+  .banner strong { font-weight: 600; }
+  .banner a { color: inherit; font-weight: 600; }
+
+  .stats { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+  .stat {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--swatch, var(--border));
+    border-radius: 8px;
+    padding: 12px 16px;
+    min-width: 180px;
+    flex: 1;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: opacity 120ms ease;
+  }
+  /* Switched off: the card stays legible, so you can still read the balance of
+     a line you have hidden from the graph. */
+  .stat[aria-pressed="false"] {
+    opacity: 0.5;
+    border-left-color: var(--border);
+  }
+  .stat:focus-visible { outline: 2px solid var(--swatch); outline-offset: 2px; }
+  .stat .label { color: var(--text-secondary); font-size: 12px; }
+  .stat .value {
+    font-size: 24px; font-weight: 600; letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums; margin-top: 2px;
+  }
+  .stat .asof { color: var(--text-muted); font-size: 11px; margin-top: 2px; }
+
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 16px;
+    align-items: center; margin-bottom: 16px;
+  }
+  .group { display: flex; gap: 0; }
+  .group button {
+    font: inherit; font-size: 13px;
+    background: var(--surface-1);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    padding: 5px 12px; cursor: pointer;
+  }
+  .group button:first-child { border-radius: 6px 0 0 6px; }
+  .group button:last-child { border-radius: 0 6px 6px 0; }
+  .group button + button { border-left: none; }
+  .group button[aria-pressed="true"] {
+    background: var(--text-primary); color: var(--surface-1);
+    border-color: var(--text-primary);
+  }
+  .spacer { flex: 1; }
+  .link {
+    font: inherit; font-size: 13px; background: none; border: none;
+    color: var(--text-secondary); cursor: pointer; text-decoration: underline;
+    text-underline-offset: 3px; padding: 4px;
+  }
+
+  .panel {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .chart-wrap { height: 380px; position: relative; }
+  .note { color: var(--text-muted); font-size: 12px; margin-top: 12px; }
+
+  .table-wrap { margin-top: 16px; overflow-x: auto; max-height: 320px; overflow-y: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: right; padding: 5px 10px; border-bottom: 1px solid var(--border); }
+  th:first-child, td:first-child { text-align: left; }
+  th {
+    color: var(--text-secondary); font-weight: 600; position: sticky; top: 0;
+    background: var(--surface-1);
+  }
+  td { font-variant-numeric: tabular-nums; }
+  td .src { color: var(--text-muted); font-size: 11px; }
+
+  footer { color: var(--text-muted); font-size: 12px; margin-top: 20px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>What's in my account</h1>
+
+  <div id="banner" class="banner" hidden></div>
+  <div id="stats" class="stats"></div>
+
+  <div class="controls">
+    <div class="group" id="range" role="group" aria-label="Time period">
+      <button data-days="30">30d</button>
+      <button data-days="90">90d</button>
+      <button data-days="365">1y</button>
+      <button data-days="0">All</button>
+    </div>
+    <div class="group" id="type" role="group" aria-label="Balance type">
+      <button data-type="ITBD">Booked</button>
+      <button data-type="ITAV">Available</button>
+    </div>
+    <div class="spacer"></div>
+    <button class="link" id="toggle-table" aria-expanded="false">Show table</button>
+  </div>
+
+  <div class="panel">
+    <div class="chart-wrap"><canvas id="chart"></canvas></div>
+    <p class="note" id="note"></p>
+  </div>
+
+  <div class="panel table-wrap" id="table-panel" hidden>
+    <table id="table"><thead></thead><tbody></tbody></table>
+  </div>
+
+  <footer id="footer"></footer>
+</main>
+
+<script>
+const money = new Intl.NumberFormat("sv-SE", {
+  style: "currency", currency: "SEK", maximumFractionDigits: 0,
+});
+const moneyExact = new Intl.NumberFormat("sv-SE", {
+  style: "currency", currency: "SEK", minimumFractionDigits: 2,
+});
+
+// hidden holds account ids switched off by clicking their card. It survives
+// range and balance-type changes, which rebuild the chart from scratch.
+const state = { days: 90, type: "ITBD", data: null, chart: null, hidden: new Set() };
+
+function colors() {
+  const css = getComputedStyle(document.documentElement);
+  const get = (name) => css.getPropertyValue(name).trim();
+  return {
+    series: [get("--series-1"), get("--series-2")],
+    grid: get("--grid"),
+    text: get("--text-secondary"),
+    muted: get("--text-muted"),
+    surface: get("--surface-1"),
+  };
+}
+
+// A dashed segment means the value was reconstructed from transaction history
+// rather than read from the bank. Identity is never carried by the dash alone:
+// the note and the table both say so in words.
+function isDerived(series, index) {
+  const point = series.points[index];
+  return point && point.source === "derived";
+}
+
+// Direct labels at the end of each line, so identity does not depend on
+// matching a legend swatch to a colour.
+const endLabels = {
+  id: "endLabels",
+  afterDatasetsDraw(chart) {
+    const { ctx } = chart;
+    ctx.save();
+    ctx.font = "600 12px system-ui, sans-serif";
+    ctx.textBaseline = "middle";
+    chart.data.datasets.forEach((dataset, i) => {
+      const meta = chart.getDatasetMeta(i);
+      if (meta.hidden) return;
+      const last = [...meta.data].reverse().find((p) => p && !isNaN(p.y));
+      if (!last) return;
+      ctx.fillStyle = dataset.borderColor;
+      ctx.fillText(dataset.label, last.x + 8, last.y);
+    });
+    ctx.restore();
+  },
+};
+
+// Crosshair, so a value can be read off any date without hunting for a marker.
+const crosshair = {
+  id: "crosshair",
+  afterDatasetsDraw(chart) {
+    const active = chart.tooltip?.getActiveElements?.() ?? [];
+    if (!active.length) return;
+    const x = active[0].element.x;
+    const { top, bottom } = chart.chartArea;
+    const ctx = chart.ctx;
+    ctx.save();
+    ctx.strokeStyle = colors().muted;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(x, top);
+    ctx.lineTo(x, bottom);
+    ctx.stroke();
+    ctx.restore();
+  },
+};
+
+async function load() {
+  const params = new URLSearchParams({ type: state.type });
+  if (state.days > 0) {
+    const from = new Date();
+    from.setDate(from.getDate() - state.days);
+    params.set("from", from.toISOString().slice(0, 10));
+  }
+  const [balances, status] = await Promise.all([
+    fetch(`/api/balances?${params}`).then((r) => r.json()),
+    fetch("/api/status").then((r) => r.json()),
+  ]);
+  state.data = balances;
+  render(balances, status);
+}
+
+function render(data, status) {
+  renderBanner(status);
+  renderStats(data);
+  renderTable(data);
+  renderFooter(status);
+  drawChart(data);
+}
+
+// Isolated: a chart that throws must not take the numbers with it. A blank panel
+// and no explanation is the worst possible failure here.
+function drawChart(data) {
+  try {
+    if (typeof Chart === "undefined") {
+      throw new Error("Chart.js did not load, check /static/chart.umd.min.js");
+    }
+    renderChart(data);
+  } catch (error) {
+    document.getElementById("note").textContent = `Chart failed to render: ${error.message}`;
+    console.error(error);
+  }
+}
+
+function renderBanner(status) {
+  const banner = document.getElementById("banner");
+  const messages = [];
+
+  if (status.stale) {
+    const when = status.hours_since_success === null
+      ? "never"
+      : `${status.hours_since_success} hours ago`;
+    messages.push(`<strong>Collection is stale.</strong> Last success: ${when}.`);
+  }
+  if (status.last_error) {
+    messages.push(`<strong>Last run failed:</strong> ${escapeHtml(status.last_error)}`);
+  }
+  if (status.consent_days_left !== null && status.consent_days_left < 14) {
+    messages.push(
+      `<strong>Bank access expires in ${status.consent_days_left} days.</strong> ` +
+      `Re-authorize to keep collecting. History only reaches back 90 days.`
+    );
+  }
+
+  if (messages.length && status.can_reauthorize) {
+    messages.push(`<a href="/auth">Re-authorize with the bank</a>`);
+  }
+
+  banner.innerHTML = messages.join("<br>");
+  banner.hidden = messages.length === 0;
+}
+
+function renderStats(data) {
+  const palette = colors();
+  document.getElementById("stats").innerHTML = data.accounts
+    .map((account, i) => {
+      const last = account.points[account.points.length - 1];
+      const value = last ? moneyExact.format(last.amount) : "No data";
+      const asof = last
+        ? `${last.date}${last.source === "derived" ? " · reconstructed" : ""}`
+        : "";
+      return statCard(account, palette.series[i], value, asof);
+    })
+    .join("");
+}
+
+// The cards double as the chart's legend: colour swatch, label, and the switch
+// that shows or hides the line. One control, so nothing can get out of sync.
+function statCard(account, color, value, asof) {
+  const shown = !state.hidden.has(account.id);
+  return `<button type="button" class="stat" data-id="${account.id}"
+      style="--swatch: ${color}" aria-pressed="${shown}"
+      title="Click to show or hide this line">
+    <div class="label">${escapeHtml(account.label)}</div>
+    <div class="value">${value}</div>
+    <div class="asof">${escapeHtml(asof)}</div>
+  </button>`;
+}
+
+function renderChart(data) {
+  const palette = colors();
+  const labels = [...new Set(data.accounts.flatMap((a) => a.points.map((p) => p.date)))].sort();
+  const index = new Map(labels.map((d, i) => [d, i]));
+
+  const datasets = data.accounts.map((account, i) => {
+    const values = new Array(labels.length).fill(null);
+    const sources = new Array(labels.length).fill(null);
+    account.points.forEach((point) => {
+      values[index.get(point.date)] = point.amount;
+      sources[index.get(point.date)] = point.source;
+    });
+    const sparse = account.points.length < 3;
+    return {
+      label: account.label,
+      data: values,
+      sources,
+      hidden: state.hidden.has(account.id),
+      borderColor: palette.series[i],
+      backgroundColor: palette.series[i],
+      borderWidth: 2,
+      pointRadius: sparse ? 4 : 0,
+      pointHoverRadius: 5,
+      pointHoverBorderColor: palette.surface,
+      pointHoverBorderWidth: 2,
+      tension: 0,
+      spanGaps: false,
+      segment: {
+        // Dashed where the segment lands on a reconstructed value.
+        borderDash: (ctx) =>
+          ctx.p1DataIndex !== undefined && sources[ctx.p1DataIndex] === "derived"
+            ? [5, 4]
+            : undefined,
+      },
+    };
+  });
+
+  state.chart?.destroy();
+  state.chart = new Chart(document.getElementById("chart"), {
+    type: "line",
+    data: { labels, datasets },
+    plugins: [endLabels, crosshair],
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: { right: 90, top: 8 } },
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        // The stat cards are the legend, and the only place a line is toggled.
+        // A second legend here could disagree with them.
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: palette.surface,
+          titleColor: palette.text,
+          bodyColor: palette.text,
+          borderColor: palette.grid,
+          borderWidth: 1,
+          padding: 10,
+          displayColors: true,
+          usePointStyle: true,
+          callbacks: {
+            label: (ctx) => {
+              const source = ctx.dataset.sources[ctx.dataIndex];
+              const suffix = source === "derived" ? " (reconstructed)" : "";
+              return ` ${ctx.dataset.label}: ${moneyExact.format(ctx.parsed.y)}${suffix}`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          border: { color: palette.grid },
+          ticks: {
+            color: palette.muted, maxTicksLimit: 8, maxRotation: 0, autoSkip: true,
+            font: { size: 11 },
+          },
+        },
+        y: {
+          grid: { color: palette.grid, drawTicks: false },
+          border: { display: false },
+          ticks: {
+            color: palette.muted, padding: 8, font: { size: 11 },
+            callback: (value) => money.format(value),
+          },
+        },
+      },
+    },
+  });
+}
+
+function renderTable(data) {
+  const labels = [...new Set(data.accounts.flatMap((a) => a.points.map((p) => p.date)))]
+    .sort()
+    .reverse();
+  const lookup = data.accounts.map(
+    (account) => new Map(account.points.map((p) => [p.date, p]))
+  );
+
+  document.querySelector("#table thead").innerHTML =
+    `<tr><th>Date</th>${data.accounts
+      .map((a) => `<th>${escapeHtml(a.label)}</th>`)
+      .join("")}</tr>`;
+
+  document.querySelector("#table tbody").innerHTML = labels
+    .map((date) => {
+      const cells = lookup
+        .map((map) => {
+          const point = map.get(date);
+          if (!point) return "<td></td>";
+          const tag = point.source === "derived"
+            ? ' <span class="src">reconstructed</span>' : "";
+          return `<td>${moneyExact.format(point.amount)}${tag}</td>`;
+        })
+        .join("");
+      return `<tr><td>${date}</td>${cells}</tr>`;
+    })
+    .join("");
+}
+
+function renderFooter(status) {
+  const parts = [];
+  if (status.last_success) {
+    parts.push(`Last collected ${new Date(status.last_success).toLocaleString("sv-SE")}`);
+  }
+  if (status.consent_days_left !== null) {
+    parts.push(`bank access valid for ${status.consent_days_left} more days`);
+  }
+  document.getElementById("footer").textContent = parts.join(" · ");
+
+  document.getElementById("note").textContent =
+    state.type === "ITAV"
+      ? "Available balance, what you can actually spend. Only collected from the day this started running, so there is no reconstructed history for it."
+      : "Booked balance. A dashed line was reconstructed from transaction history rather than read directly from the bank.";
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"]/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+function wireGroup(id, key, parse) {
+  document.querySelectorAll(`#${id} button`).forEach((button) => {
+    button.addEventListener("click", () => {
+      state[key] = parse(button);
+      syncGroup(id, key, parse);
+      load();
+    });
+  });
+  syncGroup(id, key, parse);
+}
+
+function syncGroup(id, key, parse) {
+  document.querySelectorAll(`#${id} button`).forEach((button) => {
+    button.setAttribute("aria-pressed", String(parse(button) === state[key]));
+  });
+}
+
+wireGroup("range", "days", (b) => Number(b.dataset.days));
+wireGroup("type", "type", (b) => b.dataset.type);
+
+document.getElementById("stats").addEventListener("click", (event) => {
+  const card = event.target.closest(".stat");
+  if (!card || !state.data) return;
+
+  const id = card.dataset.id;
+  if (state.hidden.has(id)) state.hidden.delete(id);
+  else state.hidden.add(id);
+
+  card.setAttribute("aria-pressed", String(!state.hidden.has(id)));
+  // Only the chart is rebuilt: the cards keep showing every balance, including
+  // the ones whose line is currently hidden.
+  drawChart(state.data);
+});
+
+document.getElementById("toggle-table").addEventListener("click", (event) => {
+  const panel = document.getElementById("table-panel");
+  panel.hidden = !panel.hidden;
+  event.target.textContent = panel.hidden ? "Show table" : "Hide table";
+  event.target.setAttribute("aria-expanded", String(!panel.hidden));
+});
+
+// Re-render on theme change: the dark palette is its own set of steps, not an
+// automatic inversion, so the chart has to be rebuilt with the new values.
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => load());
+
+load();
+</script>
+</body>
+</html>
