@@ -12,3 +12,7 @@ balances.db*
 
 .venv/
 __pycache__/
+
+# Editor backups: accounts.toml~ would carry real account hashes
+*~
+*.swp
