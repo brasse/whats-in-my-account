@@ -1,0 +1,14 @@
+# Copy to config.toml and fill in. In a container this is mounted at
+# /data/config.toml, next to the database and the private key, so backing up
+# that one directory backs up everything.
+
+# Run "python -m wima.passwd" to generate this block. There is one user.
+[auth]
+username = "you"
+password_hash = "scrypt$32768$8$1$<salt>$<hash>"
+
+# Accounts to collect, named by identification_hash, which is stable across
+# sessions unlike the account uid. Pull the hashes from a session response.
+[[account]]
+hash = "PASTE_THE_identification_hash_FROM_THE_SESSION_RESPONSE"
+label = "Privatkonto 1234"

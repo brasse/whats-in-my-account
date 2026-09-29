@@ -14,15 +14,17 @@ import asyncio
 import contextlib
 import datetime as dt
 import logging
+import hmac
 import os
 import pathlib
 import secrets
+import urllib.parse
 
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from wima import collect, config, db, loop
+from wima import auth, collect, config, db, loop
 from wima.ebanking import EnableBanking
 
 logger = logging.getLogger(__name__)
@@ -56,9 +58,11 @@ async def supervise(
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = config.load_settings()
+    configuration = config.load_config()
     app.state.settings = settings
+    app.state.config = configuration
     app.state.connection = db.connect(settings.db_path)
-    app.state.accounts = config.load_accounts()
+    app.state.accounts = configuration.accounts
     app.state.client = EnableBanking(settings)
     # state token -> when it was issued, so a callback can be matched to a flow
     # this process actually started.
@@ -74,7 +78,117 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="whats-in-my-account", lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=STATIC), name="static")
+
+# Only the vendored assets are public. index.html is served by a route so that
+# the page itself sits behind the login like everything else.
+app.mount("/static", StaticFiles(directory=STATIC / "vendor"), name="static")
+
+# Reachable without logging in. /health exists so the container healthcheck does
+# not need credentials, and it reveals nothing.
+PUBLIC_PATHS = {"/login", "/health"}
+
+
+def safe_next(path: str) -> str:
+    """Only same-site absolute paths, so ?next= cannot become an open redirect."""
+    if path.startswith("/") and not path.startswith("//") and "\\" not in path:
+        return path
+    return "/"
+
+
+async def form_values(request: Request) -> dict[str, str]:
+    """Parse an application/x-www-form-urlencoded body.
+
+    Starlette's request.form() requires python-multipart even for urlencoded
+    bodies, which a single login form does not justify.
+    """
+    parsed = urllib.parse.parse_qs(
+        (await request.body()).decode("utf-8"), keep_blank_values=True
+    )
+    return {key: values[0] for key, values in parsed.items()}
+
+
+def login_page(next_path: str, error: str = "") -> HTMLResponse:
+    html = (STATIC / "login.html").read_text()
+    html = html.replace("__NEXT__", urllib.parse.quote(next_path, safe="/?=&"))
+    html = html.replace("__ERROR__", error)
+    html = html.replace("__ERROR_HIDDEN__", "" if error else "hidden")
+    return HTMLResponse(html, status_code=401 if error else 200)
+
+
+@app.middleware("http")
+async def require_login(request: Request, call_next):
+    path = request.url.path
+    if path in PUBLIC_PATHS or path.startswith("/static/"):
+        return await call_next(request)
+
+    token = request.cookies.get(auth.COOKIE_NAME)
+    if token and auth.session_is_valid(request.app.state.connection, token):
+        return await call_next(request)
+
+    # The page's fetch calls need a status they can act on, not a login form
+    # rendered into a JSON parser.
+    if path.startswith("/api/"):
+        return JSONResponse({"detail": "not authenticated"}, status_code=401)
+
+    target = path
+    if request.url.query:
+        target = f"{path}?{request.url.query}"
+    return RedirectResponse(f"/login?next={urllib.parse.quote(target, safe='')}", 303)
+
+
+@app.get("/health")
+async def health() -> dict:
+    return {"status": "ok"}
+
+
+@app.get("/login")
+async def login_form(next: str = "/") -> HTMLResponse:
+    return login_page(safe_next(next))
+
+
+@app.post("/login")
+async def login(request: Request):
+    form = await form_values(request)
+    username = form.get("username", "")
+    password = form.get("password", "")
+    next_path = safe_next(form.get("next", "/"))
+
+    expected = request.app.state.config.auth
+    # Both checks always run: comparing the username first and returning early
+    # would let someone learn a valid username from the response time.
+    name_ok = hmac.compare_digest(username, expected.username)
+    password_ok = auth.verify_password(password, expected.password_hash)
+    if not (name_ok and password_ok):
+        logger.warning("failed login for %r", username[:40])
+        return login_page(next_path, error="Wrong username or password")
+
+    token = auth.start_session(request.app.state.connection)
+    response = RedirectResponse(next_path, status_code=303)
+    response.set_cookie(
+        auth.COOKIE_NAME,
+        token,
+        max_age=auth.SESSION_DAYS * 24 * 3600,
+        httponly=True,
+        samesite="lax",
+        # Caddy terminates TLS, so the app itself only ever sees http. Whether
+        # the cookie may travel in the clear is decided by the public URL.
+        secure=bool(
+            request.app.state.settings.public_url
+            and request.app.state.settings.public_url.startswith("https://")
+        ),
+    )
+    logger.info("logged in")
+    return response
+
+
+@app.post("/logout")
+async def logout(request: Request) -> RedirectResponse:
+    token = request.cookies.get(auth.COOKIE_NAME)
+    if token:
+        auth.end_session(request.app.state.connection, token)
+    response = RedirectResponse("/login", status_code=303)
+    response.delete_cookie(auth.COOKIE_NAME)
+    return response
 
 
 def account_by_id(app: FastAPI, account_id: str) -> config.Account:
@@ -247,7 +361,7 @@ def main() -> None:
     # same sys.exit surfaces as a startup traceback. A missing file should print
     # one line, not a stack.
     config.load_settings()
-    config.load_accounts()
+    config.load_config()
 
     uvicorn.run(
         app,

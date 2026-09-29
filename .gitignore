@@ -1,4 +1,6 @@
-# Identifies real bank accounts
+# Credentials and account identifiers. accounts.toml is the old name and
+# stays listed so an un-renamed copy cannot be committed by accident.
+config.toml
 accounts.toml
 
 # Session dumps: effectively keys to the account

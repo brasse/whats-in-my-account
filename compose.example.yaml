@@ -2,7 +2,7 @@
 #
 # Everything the service needs that is not in the image lives in ./data:
 #
-#   data/accounts.toml     which accounts to collect (see accounts.toml.example)
+#   data/config.toml       login and which accounts to collect (see config.toml.example)
 #   data/private-key.pem   the RSA key downloaded from the Enable Banking panel
 #   data/balances.db       created on first run
 #

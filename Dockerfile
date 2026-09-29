@@ -26,7 +26,7 @@ ENV PATH="/app/.venv/bin:$PATH" \
     WIMA_HOST=0.0.0.0 \
     WIMA_PORT=8081 \
     WIMA_DB=/data/balances.db \
-    WIMA_ACCOUNTS=/data/accounts.toml \
+    WIMA_CONFIG=/data/config.toml \
     EB_KEY_PATH=/data/private-key.pem
 
 RUN useradd --create-home --uid 1000 wima \
@@ -41,7 +41,7 @@ EXPOSE 8081
 
 # urllib rather than curl, which a slim image does not carry.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/api/status').read()" \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health').read()" \
     || exit 1
 
 # Serves the page and hosts the collector loop. One process.

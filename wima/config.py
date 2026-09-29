@@ -24,6 +24,20 @@ class Account:
 
 
 @dataclasses.dataclass(frozen=True)
+class Auth:
+    username: str
+    password_hash: str
+
+
+@dataclasses.dataclass(frozen=True)
+class Config:
+    """The contents of config.toml: who may log in, and what to collect."""
+
+    auth: Auth
+    accounts: list[Account]
+
+
+@dataclasses.dataclass(frozen=True)
 class Settings:
     app_id: str
     private_key: str
@@ -79,13 +93,17 @@ def _public_url() -> str | None:
     return url.rstrip("/") if url else None
 
 
-def load_accounts(path: pathlib.Path | None = None) -> list[Account]:
-    """Accounts to collect. WIMA_ACCOUNTS lets a container mount this anywhere."""
+def config_path() -> pathlib.Path:
+    return pathlib.Path(os.environ.get("WIMA_CONFIG", "config.toml"))
+
+
+def load_config(path: pathlib.Path | None = None) -> Config:
+    """Read config.toml. WIMA_CONFIG lets a container mount it anywhere."""
     if path is None:
-        path = pathlib.Path(os.environ.get("WIMA_ACCOUNTS", "accounts.toml"))
+        path = config_path()
 
     if not path.exists():
-        sys.exit(f"{path} not found, copy accounts.toml.example and fill it in")
+        sys.exit(f"{path} not found, copy config.toml.example and fill it in")
 
     with path.open("rb") as f:
         data = tomllib.load(f)
@@ -96,4 +114,21 @@ def load_accounts(path: pathlib.Path | None = None) -> list[Account]:
     ]
     if not accounts:
         sys.exit(f"{path} lists no accounts")
-    return accounts
+
+    # Mandatory rather than optional: an unprotected deployment should not be one
+    # forgotten section away, and this page shows your bank balance.
+    auth = data.get("auth", {})
+    if not auth.get("username") or not auth.get("password_hash"):
+        sys.exit(
+            f"{path} has no [auth] section with a username and password_hash.\n"
+            f"Run: python -m wima.passwd"
+        )
+
+    return Config(
+        auth=Auth(username=auth["username"], password_hash=auth["password_hash"]),
+        accounts=accounts,
+    )
+
+
+def load_accounts(path: pathlib.Path | None = None) -> list[Account]:
+    return load_config(path).accounts

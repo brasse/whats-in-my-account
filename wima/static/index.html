@@ -154,7 +154,11 @@
   td { font-variant-numeric: tabular-nums; }
   td .src { color: var(--text-muted); font-size: 11px; }
 
-  footer { color: var(--text-muted); font-size: 12px; margin-top: 20px; }
+  footer {
+    color: var(--text-muted); font-size: 12px; margin-top: 20px;
+    display: flex; gap: 12px; align-items: baseline; justify-content: space-between;
+  }
+  .logout { margin: 0; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -189,7 +193,12 @@
     <table id="table"><thead></thead><tbody></tbody></table>
   </div>
 
-  <footer id="footer"></footer>
+  <footer>
+    <span id="footer"></span>
+    <form method="post" action="/logout" class="logout">
+      <button type="submit" class="link">Sign out</button>
+    </form>
+  </footer>
 </main>
 
 <script>
@@ -273,9 +282,20 @@ async function load() {
     from.setDate(from.getDate() - state.days);
     params.set("from", from.toISOString().slice(0, 10));
   }
+  // A session that expires while the page is open comes back as 401 rather than
+  // as a login form parsed as JSON.
+  const get = async (url) => {
+    const response = await fetch(url);
+    if (response.status === 401) {
+      window.location = "/login";
+      throw new Error("not authenticated");
+    }
+    return response.json();
+  };
+
   const [balances, status] = await Promise.all([
-    fetch(`/api/balances?${params}`).then((r) => r.json()),
-    fetch("/api/status").then((r) => r.json()),
+    get(`/api/balances?${params}`),
+    get("/api/status"),
   ]);
   state.data = balances;
   render(balances, status);

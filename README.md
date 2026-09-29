@@ -5,8 +5,9 @@ graph of it. It reads balances through the [Enable Banking](https://enablebankin
 PSD2 API, stores them in SQLite, and serves a single page with a chart and a few
 controls for the time period.
 
-Built for a home network, behind a reverse proxy, for one person. It has no
-login of its own: anyone who can reach it can see the balances.
+Built for a home network, behind a reverse proxy, for one person. Access is
+behind a login form with a single user whose password hash lives in the config
+file.
 
 ## How it works
 
@@ -38,13 +39,13 @@ With Docker, which is the intended way:
 
 ```bash
 mkdir -p data
-cp accounts.toml.example data/accounts.toml   # then fill it in
+cp config.toml.example data/config.toml     # then fill it in
 cp /path/to/downloaded-key.pem data/private-key.pem
-cp compose.example.yaml compose.yaml          # then fill in the environment
+cp compose.example.yaml compose.yaml        # then fill in the environment
 docker compose up -d
 ```
 
-Everything that is not in the image lives in `data/`: the accounts file, the
+Everything that is not in the image lives in `data/`: the config file, the
 private key and the database. That directory is the only thing to back up, and
 restoring it restores the service completely.
 
@@ -62,8 +63,11 @@ uv run python -m wima.web
    is an exact string comparison, so the path has to be included.
 3. Start the service and visit `/auth` to authorize with your bank.
 4. Find your accounts' `identification_hash` values and list the ones you want
-   in `accounts.toml`. `explore.py` is a scratch script for poking at the API by
+   in `config.toml`. `explore.py` is a scratch script for poking at the API by
    hand, and can dump a session response for you.
+5. Generate the login credentials with `python -m wima.passwd` and paste the
+   `[auth]` block it prints into `config.toml`. The service will not start
+   without it.
 
 ## Configuration
 
@@ -73,7 +77,7 @@ uv run python -m wima.web
 | `EB_KEY_PATH` | `/data/private-key.pem` | RSA private key for signing requests |
 | `WIMA_PUBLIC_URL` | unset | External base URL, needed for the authorization flow |
 | `WIMA_DB` | `/data/balances.db` | SQLite database |
-| `WIMA_ACCOUNTS` | `/data/accounts.toml` | Which accounts to collect |
+| `WIMA_CONFIG` | `/data/config.toml` | Login and which accounts to collect |
 | `WIMA_HOST` / `WIMA_PORT` | `0.0.0.0` / `8081` | Where to listen |
 | `WIMA_ASPSP` / `WIMA_COUNTRY` | `Swedbank` / `SE` | Which bank |
 | `WIMA_CONSENT_DAYS` | `180` | Access duration to request |
@@ -84,14 +88,13 @@ uv run python -m wima.web
 ## Tests
 
 ```bash
-uv run python tests/test_backfill.py
-uv run python tests/test_loop.py
-uv run python tests/test_web.py
+for t in tests/test_*.py; do uv run python "$t"; done
 ```
 
 Plain asserts, no framework. They cover the reconstruction arithmetic, the rule
 that derived never overwrites observed, when notifications fire and when they
-stay quiet, and the guards on the authorization flow.
+stay quiet, password hashing and sessions, and the login wall and the guards on
+the authorization flow.
 
 ## Bank support
 

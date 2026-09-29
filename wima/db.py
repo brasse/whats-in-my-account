@@ -32,6 +32,14 @@ CREATE TABLE IF NOT EXISTS collection_runs (
     error       TEXT
 );
 
+-- Browser login sessions. Only the SHA-256 of each token is kept, so a copy of
+-- this database does not hand anyone a working session.
+CREATE TABLE IF NOT EXISTS web_sessions (
+    token_digest TEXT PRIMARY KEY,
+    created_at   TEXT NOT NULL,
+    expires_at   TEXT NOT NULL
+);
+
 -- When each kind of notification was last sent, so a stuck collector produces
 -- one message a day rather than one an hour.
 CREATE TABLE IF NOT EXISTS notifications (
@@ -87,6 +95,30 @@ def set_session(connection: sqlite3.Connection, session_id: str, valid_until: st
 
 def get_session(connection: sqlite3.Connection) -> sqlite3.Row | None:
     return connection.execute("SELECT * FROM session WHERE id = 1").fetchone()
+
+
+def create_web_session(
+    connection: sqlite3.Connection, token_digest: str, expires_at: str
+) -> None:
+    connection.execute(
+        "INSERT INTO web_sessions (token_digest, created_at, expires_at) VALUES (?, ?, ?)",
+        (token_digest, now(), expires_at),
+    )
+
+
+def web_session_is_valid(connection: sqlite3.Connection, token_digest: str) -> bool:
+    """Also reaps expired rows, which is as much cleanup as this table needs."""
+    connection.execute("DELETE FROM web_sessions WHERE expires_at < ?", (now(),))
+    row = connection.execute(
+        "SELECT 1 FROM web_sessions WHERE token_digest = ?", (token_digest,)
+    ).fetchone()
+    return row is not None
+
+
+def delete_web_session(connection: sqlite3.Connection, token_digest: str) -> None:
+    connection.execute(
+        "DELETE FROM web_sessions WHERE token_digest = ?", (token_digest,)
+    )
 
 
 class NoSession(Exception):
