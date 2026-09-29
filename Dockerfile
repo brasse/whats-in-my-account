@@ -18,18 +18,20 @@ RUN uv sync --frozen --no-dev
 # Runtime stage. No uv and no build tooling, just the interpreter and the venv.
 FROM python:3.14-slim-bookworm
 
+# One mount holds everything that is not in this image: the database, the
+# accounts file, and the private key. Backing up /data backs up the whole
+# service, and restoring it restores the whole service.
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     WIMA_HOST=0.0.0.0 \
     WIMA_PORT=8081 \
     WIMA_DB=/data/balances.db \
-    WIMA_ACCOUNTS=/config/accounts.toml
+    WIMA_ACCOUNTS=/data/accounts.toml \
+    EB_KEY_PATH=/data/private-key.pem
 
-# /data holds the database, /config holds accounts.toml and the private key.
-# Both are mount points, and both must be writable by the unprivileged user.
 RUN useradd --create-home --uid 1000 wima \
-    && mkdir -p /data /config \
-    && chown wima:wima /data /config
+    && mkdir -p /data \
+    && chown wima:wima /data
 
 WORKDIR /app
 COPY --from=builder --chown=wima:wima /app /app

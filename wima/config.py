@@ -55,9 +55,13 @@ def load_settings() -> Settings:
     if not app_id or not key_path:
         sys.exit("set EB_APP_ID and EB_KEY_PATH")
 
+    key = pathlib.Path(key_path)
+    if not key.is_file():
+        sys.exit(f"no private key at {key}, set EB_KEY_PATH or put it there")
+
     return Settings(
         app_id=app_id,
-        private_key=pathlib.Path(key_path).read_text(),
+        private_key=key.read_text(),
         psu_ip=os.environ.get("EB_PSU_IP", "127.0.0.1"),
         psu_user_agent=os.environ.get("EB_PSU_UA", DEFAULT_USER_AGENT),
         db_path=pathlib.Path(os.environ.get("WIMA_DB", "balances.db")),

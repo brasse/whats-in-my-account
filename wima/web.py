@@ -242,6 +242,13 @@ def main() -> None:
     import uvicorn
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+    # Fail on bad configuration here rather than inside the lifespan, where the
+    # same sys.exit surfaces as a startup traceback. A missing file should print
+    # one line, not a stack.
+    config.load_settings()
+    config.load_accounts()
+
     uvicorn.run(
         app,
         host=os.environ.get("WIMA_HOST", "127.0.0.1"),

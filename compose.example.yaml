@@ -1,0 +1,46 @@
+# Example deployment. Copy to compose.yaml and fill in the environment.
+#
+# Everything the service needs that is not in the image lives in ./data:
+#
+#   data/accounts.toml     which accounts to collect (see accounts.toml.example)
+#   data/private-key.pem   the RSA key downloaded from the Enable Banking panel
+#   data/balances.db       created on first run
+#
+# So ./data is the only thing to back up, and the only thing to restore.
+
+services:
+  wima:
+    image: ghcr.io/OWNER/wima:latest
+    container_name: wima
+    restart: unless-stopped
+    ports:
+      # Bound to localhost: put a reverse proxy in front rather than exposing
+      # a page with your bank balance on it to the whole network.
+      - "127.0.0.1:8081:8081"
+    volumes:
+      - ./data:/data
+    environment:
+      # The container clock decides where one day ends and the next begins.
+      - TZ=Europe/Stockholm
+
+      # From the Enable Banking control panel.
+      - EB_APP_ID=00000000-0000-0000-0000-000000000000
+
+      # How the bank reaches you on the way back from authorization. Must match
+      # a redirect URL registered in the control panel, with the /auth/callback
+      # path included, or authorization is refused.
+      - WIMA_PUBLIC_URL=https://example.com
+
+      # Optional. Without it, notifications are silently skipped.
+      - NTFY_TOPIC=
+      # - NTFY_URL=https://ntfy.sh
+
+      # Optional, shown here at their defaults.
+      # - WIMA_ASPSP=Swedbank
+      # - WIMA_COUNTRY=SE
+      # - WIMA_CONSENT_DAYS=180
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
