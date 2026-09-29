@@ -75,7 +75,11 @@ def _public_url() -> str | None:
     return url.rstrip("/") if url else None
 
 
-def load_accounts(path: pathlib.Path = pathlib.Path("accounts.toml")) -> list[Account]:
+def load_accounts(path: pathlib.Path | None = None) -> list[Account]:
+    """Accounts to collect. WIMA_ACCOUNTS lets a container mount this anywhere."""
+    if path is None:
+        path = pathlib.Path(os.environ.get("WIMA_ACCOUNTS", "accounts.toml"))
+
     if not path.exists():
         sys.exit(f"{path} not found, copy accounts.toml.example and fill it in")
 

@@ -1,0 +1,16 @@
+# Never let real data or credentials into a build context, let alone an image.
+accounts.toml
+balances.db*
+*.pem
+.explore-session*.json
+
+.git/
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+
+# Not needed at runtime.
+tests/
+explore.py
+foo.json
