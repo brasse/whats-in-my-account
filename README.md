@@ -33,6 +33,22 @@ Reconstructed values are stored as `derived` and drawn as a dashed line.
 Values read directly from the bank are `observed`, and a derived value can never
 overwrite one.
 
+## Daily balance notifications
+
+Mark an account with `notify = true` in `config.toml` and its available balance
+is sent to `NTFY_TOPIC` after each day's first successful collection, along with
+the change since the previous reading:
+
+```
+Privatkonto 1234
+12 345.67 SEK (−432.10 since yesterday)
+```
+
+On a fresh install the change appears from the second day on. Backfill can only
+reconstruct the booked balance, so there is no earlier available balance to
+compare against until one has actually been read. A failed send is logged and
+not retried; tomorrow's message supersedes it.
+
 ## Running it
 
 With Docker, which is the intended way:
@@ -81,7 +97,7 @@ uv run python -m wima.web
 | `WIMA_HOST` / `WIMA_PORT` | `0.0.0.0` / `8081` | Where to listen |
 | `WIMA_ASPSP` / `WIMA_COUNTRY` | `Swedbank` / `SE` | Which bank |
 | `WIMA_CONSENT_DAYS` | `180` | Access duration to request |
-| `NTFY_TOPIC` | unset | Notifications are skipped when unset |
+| `NTFY_TOPIC` | unset | Where alerts and daily balances go, skipped when unset |
 | `NTFY_URL` | `https://ntfy.sh` | For a self-hosted ntfy |
 | `TZ` | container default | Decides where one day ends |
 

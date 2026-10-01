@@ -12,3 +12,6 @@ password_hash = "scrypt$32768$8$1$<salt>$<hash>"
 [[account]]
 hash = "PASTE_THE_identification_hash_FROM_THE_SESSION_RESPONSE"
 label = "Privatkonto 1234"
+# Send this account's available balance to NTFY_TOPIC once a day, after
+# collection. Leave it out, or set it to false, for no message.
+notify = true
