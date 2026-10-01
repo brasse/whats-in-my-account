@@ -44,5 +44,10 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health').read()" \
     || exit 1
 
+# Last, so a new commit does not invalidate the layers above. CI passes the
+# full SHA; the page shows the first eight characters.
+ARG GIT_COMMIT
+ENV WIMA_COMMIT=$GIT_COMMIT
+
 # Serves the page and hosts the collector loop. One process.
 CMD ["python", "-m", "wima.web"]

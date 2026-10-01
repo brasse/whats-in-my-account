@@ -137,10 +137,26 @@ def test_status_shape() -> None:
         body = logged_in(c).get("/api/status").json()
     for key in [
         "last_success", "hours_since_success", "stale", "last_error",
-        "consent_days_left", "consent_valid_until", "can_reauthorize",
+        "consent_days_left", "consent_valid_until", "can_reauthorize", "commit",
     ]:
         assert key in body, key
     assert body["stale"] is True, "a database with no runs must read as stale"
+
+
+def test_status_shows_a_short_commit() -> None:
+    os.environ["WIMA_COMMIT"] = "50a4c73e0123456789abcdef0123456789abcdef"
+    try:
+        with client() as c:
+            body = logged_in(c).get("/api/status").json()
+    finally:
+        del os.environ["WIMA_COMMIT"]
+    assert body["commit"] == "50a4c73e", body["commit"]
+
+
+def test_status_without_a_commit() -> None:
+    with client() as c:
+        body = logged_in(c).get("/api/status").json()
+    assert body["commit"] is None, body["commit"]
 
 
 def test_balances_shape_with_no_data() -> None:

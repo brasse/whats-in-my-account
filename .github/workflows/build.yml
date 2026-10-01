@@ -58,6 +58,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Shown in the page footer, so you can tell which build is running.
+          build-args: GIT_COMMIT=${{ github.sha }}
           # Layer cache, so a code-only change rebuilds in seconds rather than
           # reinstalling every dependency.
           cache-from: type=gha

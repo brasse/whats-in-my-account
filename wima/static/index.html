@@ -506,6 +506,9 @@ function renderFooter(status) {
   if (status.consent_days_left !== null) {
     parts.push(`bank access valid for ${status.consent_days_left} more days`);
   }
+  if (status.commit) {
+    parts.push(status.commit);
+  }
   document.getElementById("footer").textContent = parts.join(" · ");
 
   document.getElementById("note").textContent =

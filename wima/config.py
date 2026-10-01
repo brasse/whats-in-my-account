@@ -59,6 +59,9 @@ class Settings:
     # redirect the bank sends the browser back to, and to put a working link in
     # a notification. Without it the browser flow cannot run.
     public_url: str | None
+    # The commit the image was built from, baked in by CI. Unset when running
+    # from a checkout, where git already knows.
+    commit: str | None = None
 
 
 DEFAULT_USER_AGENT = (
@@ -89,6 +92,7 @@ def load_settings() -> Settings:
         aspsp_country=os.environ.get("WIMA_COUNTRY", "SE"),
         consent_days=int(os.environ.get("WIMA_CONSENT_DAYS", "180")),
         public_url=_public_url(),
+        commit=os.environ.get("WIMA_COMMIT") or None,
     )
 
 

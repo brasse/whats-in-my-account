@@ -271,6 +271,8 @@ async def api_status() -> dict:
         # Without a public URL the bank has nowhere to redirect back to, so the
         # page must not offer a button that cannot work.
         "can_reauthorize": app.state.settings.public_url is not None,
+        # Eight characters is plenty to find the commit, and fits in a footer.
+        "commit": commit[:8] if (commit := app.state.settings.commit) else None,
     }
 
 
