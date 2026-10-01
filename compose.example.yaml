@@ -10,7 +10,7 @@
 
 services:
   wima:
-    image: ghcr.io/OWNER/wima:latest
+    image: ghcr.io/brasse/whats-in-my-account:latest
     container_name: wima
     restart: unless-stopped
     ports:
