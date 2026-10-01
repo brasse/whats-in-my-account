@@ -6,12 +6,16 @@ import os
 import pathlib
 import sys
 import tomllib
+from typing import Any
 
 
 @dataclasses.dataclass(frozen=True)
 class Account:
     hash: str
     label: str
+    # Send this account's available balance to NTFY_TOPIC after each day's
+    # collection.
+    notify: bool = False
 
     @property
     def id(self) -> str:
@@ -108,10 +112,7 @@ def load_config(path: pathlib.Path | None = None) -> Config:
     with path.open("rb") as f:
         data = tomllib.load(f)
 
-    accounts = [
-        Account(hash=entry["hash"], label=entry["label"])
-        for entry in data.get("account", [])
-    ]
+    accounts = [_account(entry, path) for entry in data.get("account", [])]
     if not accounts:
         sys.exit(f"{path} lists no accounts")
 
@@ -128,6 +129,17 @@ def load_config(path: pathlib.Path | None = None) -> Config:
         auth=Auth(username=auth["username"], password_hash=auth["password_hash"]),
         accounts=accounts,
     )
+
+
+def _account(entry: dict[str, Any], path: pathlib.Path) -> Account:
+    # A quoted "false" is a non-empty string, so it would opt the account in.
+    notify = entry.get("notify", False)
+    if not isinstance(notify, bool):
+        sys.exit(
+            f"{path}: notify for account {entry['label']!r} must be a boolean.\n"
+            "Write notify = true or notify = false, without quotes."
+        )
+    return Account(hash=entry["hash"], label=entry["label"], notify=notify)
 
 
 def load_accounts(path: pathlib.Path | None = None) -> list[Account]:
