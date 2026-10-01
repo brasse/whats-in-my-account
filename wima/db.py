@@ -200,6 +200,20 @@ def balance_series(
     ).fetchall()
 
 
+def recent_balances(
+    connection: sqlite3.Connection, account_hash: str, balance_type: str, limit: int
+) -> list[sqlite3.Row]:
+    """The last few balances of one type, newest first."""
+    return connection.execute(
+        """
+        SELECT reference_date, amount, currency, fetched_at
+        FROM balances WHERE account_hash = ? AND balance_type = ?
+        ORDER BY reference_date DESC LIMIT ?
+        """,
+        (account_hash, balance_type, limit),
+    ).fetchall()
+
+
 def start_run(connection: sqlite3.Connection) -> int:
     cursor = connection.execute(
         "INSERT INTO collection_runs (started_at, ok) VALUES (?, 0)", (now(),)

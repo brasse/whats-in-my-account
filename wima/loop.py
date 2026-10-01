@@ -16,6 +16,9 @@ The loop must not be able to die. Three rules enforce that:
 
 Notifications are the fourth rule, and the important one. A loop that survives
 forever while quietly collecting nothing is worse than one that crashes.
+
+Accounts marked notify also get their balance sent after each day's first
+successful collection, which is the only time there is a new number to report.
 """
 
 import argparse
@@ -23,6 +26,7 @@ import asyncio
 import datetime as dt
 import logging
 import sqlite3
+from decimal import Decimal
 
 from wima import collect, config, db, notify
 from wima.ebanking import EnableBanking, SessionNotAuthorized
@@ -40,6 +44,12 @@ STALE_AFTER_HOURS = 26
 EXPIRY_WARNING_DAYS = 7
 
 NOTIFY_INTERVAL_HOURS = 24
+
+# The available balance, which is what you can actually spend. Backfill only
+# reconstructs ITBD, so earlier ITAV readings exist only for days actually observed.
+BALANCE_TYPE = "ITAV"
+
+MINUS = "\u2212"
 
 
 def auth_link(settings: config.Settings) -> str:
@@ -103,6 +113,66 @@ async def warn_about_staleness(
     )
 
 
+def format_amount(amount: Decimal, signed: bool = False) -> str:
+    """12 345.67, with a real minus sign, and a plus too when signed."""
+    digits = f"{abs(amount):,.2f}".replace(",", " ")
+    if amount < 0:
+        return MINUS + digits
+    if signed and amount > 0:
+        return "+" + digits
+    return digits
+
+
+def balance_message(latest: sqlite3.Row, previous: sqlite3.Row | None) -> str:
+    """The balance, and how it moved since the previous reading if comparable."""
+    amount = Decimal(latest["amount"])
+    text = f"{format_amount(amount)} {latest['currency']}"
+    # A change across currencies is meaningless, so it is left out rather than guessed.
+    if previous is None or previous["currency"] != latest["currency"]:
+        return text
+
+    latest_date = dt.date.fromisoformat(latest["reference_date"])
+    previous_date = dt.date.fromisoformat(previous["reference_date"])
+    since = (
+        "yesterday"
+        if latest_date - previous_date == dt.timedelta(days=1)
+        else previous_date.isoformat()
+    )
+    change = amount - Decimal(previous["amount"])
+    if change == 0:
+        return f"{text} (unchanged since {since})"
+    return f"{text} ({format_amount(change, signed=True)} since {since})"
+
+
+async def notify_balance(
+    connection: sqlite3.Connection, account: config.Account, settings: config.Settings
+) -> None:
+    """Send one account's balance. send logs its own failures; there is no retry."""
+    rows = db.recent_balances(connection, account.hash, BALANCE_TYPE, limit=2)
+    if not rows or rows[0]["fetched_at"] < start_of_local_day():
+        logger.warning(
+            "no fresh %s balance for %s today, not sending", BALANCE_TYPE, account.label
+        )
+        return
+    previous = rows[1] if len(rows) > 1 else None
+    await notify.send(settings, account.label, balance_message(rows[0], previous))
+
+
+async def notify_balances(
+    connection: sqlite3.Connection,
+    accounts: list[config.Account],
+    settings: config.Settings,
+) -> None:
+    """One message per notify account. A problem with one must not silence the rest."""
+    for account in accounts:
+        if not account.notify:
+            continue
+        try:
+            await notify_balance(connection, account, settings)
+        except Exception:
+            logger.exception("could not send balance for %s", account.label)
+
+
 async def tick(
     connection: sqlite3.Connection,
     client: EnableBanking,
@@ -137,6 +207,10 @@ async def tick(
     except Exception as error:
         logger.exception("collection failed")
         await warn_about_staleness(connection, settings, error)
+    else:
+        # Outside the try, so a bug in here cannot be mistaken for a failed
+        # collection and set off the staleness warning.
+        await notify_balances(connection, accounts, settings)
 
 
 async def run_forever(
