@@ -354,6 +354,16 @@ async def index() -> FileResponse:
     return FileResponse(STATIC / "index.html")
 
 
+class HideHealthChecks(logging.Filter):
+    """Drop access log lines for /health, which the container healthcheck polls
+    every 30 seconds and would otherwise drown out everything else."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        # uvicorn.access args: client, method, path, http version, status.
+        args = record.args
+        return not (isinstance(args, tuple) and len(args) > 2 and args[2] == "/health")
+
+
 def main() -> None:
     import uvicorn
 
@@ -365,11 +375,16 @@ def main() -> None:
     config.load_settings()
     config.load_config()
 
+    logging.getLogger("uvicorn.access").addFilter(HideHealthChecks())
+
     uvicorn.run(
         app,
         host=os.environ.get("WIMA_HOST", "127.0.0.1"),
         port=int(os.environ.get("WIMA_PORT", "8081")),
         log_level="info",
+        # uvicorn's own config formats its lines without a timestamp. Without it,
+        # they propagate to the root logger and share the format above.
+        log_config=None,
     )
 
 
