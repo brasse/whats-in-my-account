@@ -8,11 +8,14 @@ rate limiting actually limits, and what the daily balance message says.
 import asyncio
 import dataclasses
 import datetime as dt
+import json
 import pathlib
 import sqlite3
 import sys
 import tempfile
 from decimal import Decimal
+
+import httpx
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
@@ -321,6 +324,26 @@ def test_tick_sends_no_balances_when_collection_fails() -> None:
     asyncio.run(loop.tick(connection, None, [CHECKING], SETTINGS))
     # The staleness alert may legitimately fire here; the balance must not.
     assert CHECKING.label not in sender.titles, sender.titles
+
+
+def test_notification_title_may_be_non_ascii() -> None:
+    sent = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(json.loads(request.content))
+        return httpx.Response(200)
+
+    real_client = httpx.AsyncClient
+    notify.httpx.AsyncClient = lambda **kwargs: real_client(
+        transport=httpx.MockTransport(handler), **kwargs
+    )
+    try:
+        assert asyncio.run(notify.send(SETTINGS, "Lön", "1 000.00 SEK", tags="a,b"))
+    finally:
+        notify.httpx.AsyncClient = real_client
+    assert sent == [
+        {"topic": "test-topic", "title": "Lön", "message": "1 000.00 SEK", "tags": ["a", "b"]}
+    ], sent
 
 
 if __name__ == "__main__":

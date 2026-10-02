@@ -30,17 +30,15 @@ async def send(settings: Settings, title: str, message: str, tags: str = "") -> 
         logger.info("no NTFY_TOPIC set, not sending: %s", title)
         return False
 
-    headers = {"Title": title}
+    # JSON rather than a Title header: headers are ASCII-only, and account labels
+    # like "Lön" are not.
+    body = {"topic": settings.ntfy_topic, "title": title, "message": message}
     if tags:
-        headers["Tags"] = tags
+        body["tags"] = tags.split(",")
 
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-            response = await client.post(
-                f"{settings.ntfy_url}/{settings.ntfy_topic}",
-                content=message.encode(),
-                headers=headers,
-            )
+            response = await client.post(settings.ntfy_url, json=body)
         if response.is_error:
             logger.warning("ntfy returned %s: %s", response.status_code, response.text[:200])
             return False
