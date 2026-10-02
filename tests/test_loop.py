@@ -326,6 +326,16 @@ def test_tick_sends_no_balances_when_collection_fails() -> None:
     assert CHECKING.label not in sender.titles, sender.titles
 
 
+def test_tick_waits_until_the_bank_has_rolled_over() -> None:
+    connection = fresh_db()
+    install(FakeSender())
+    loop.COLLECT_AFTER = dt.time.max
+
+    # client is None: reaching it at all would raise, which is the assertion.
+    asyncio.run(loop.tick(connection, None, [CHECKING], SETTINGS))
+    assert not db.has_successful_run_since(connection, loop.start_of_local_day())
+
+
 def test_notification_title_may_be_non_ascii() -> None:
     sent = []
 
@@ -353,6 +363,8 @@ if __name__ == "__main__":
         if name.startswith("test_"):
             notify.send = real_send
             collect.run = real_run
+            # Tests run at any hour; the one that cares about the time sets it.
+            loop.COLLECT_AFTER = dt.time.min
             test()
             print(f"ok  {name}")
     print("all passed")

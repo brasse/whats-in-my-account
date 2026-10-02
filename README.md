@@ -12,7 +12,9 @@ file.
 ## How it works
 
 One process does both jobs. A background task wakes every hour and asks whether
-today has been collected yet, collecting if not and sleeping if so. There is no
+today has been collected yet, collecting if not and sleeping if so. It does not
+start before 06:00, because just after midnight the bank still reports
+yesterday's balance. There is no
 cron, so a machine that was off at 04:00 catches up as soon as it is running
 again rather than losing the day.
 

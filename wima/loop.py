@@ -35,6 +35,12 @@ logger = logging.getLogger(__name__)
 
 INTERVAL_SECONDS = 3600
 
+# The bank keeps reporting yesterday's date for a while after midnight, so a run
+# just after 00:00 stores yesterday's balance and then counts as today's
+# collection, leaving today with no reading at all. Wait until the bank has
+# rolled over. Local time, like the rest of "today" here.
+COLLECT_AFTER = dt.time(6, 0)
+
 # A single failed morning is not worth waking you up for, since the next tick is
 # an hour away. More than a day without a success means something is actually wrong.
 STALE_AFTER_HOURS = 26
@@ -181,6 +187,10 @@ async def tick(
 ) -> None:
     """One pass. Handles its own errors so run_forever's catch is a backstop."""
     await warn_about_expiry(connection, settings)
+
+    if dt.datetime.now().time() < COLLECT_AFTER:
+        logger.info("before %s, not collecting yet", COLLECT_AFTER.strftime("%H:%M"))
+        return
 
     if db.has_successful_run_since(connection, start_of_local_day()):
         logger.info("already collected today, nothing to do")
